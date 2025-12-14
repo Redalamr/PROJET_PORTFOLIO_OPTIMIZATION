@@ -266,6 +266,6 @@ def find_minimum_variance_portfolio(Sigma: np.ndarray) -> np.ndarray:
     constraints = [cp.sum(w) == 1, w >= 0]
     
     problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.OSQP)
+    problem.solve(solver='ECOS')
     
     return w.value

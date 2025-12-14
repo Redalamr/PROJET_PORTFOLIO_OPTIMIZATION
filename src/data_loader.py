@@ -85,7 +85,7 @@ def clean_data(data: pd.DataFrame, max_missing_pct: float = 0.1) -> pd.DataFrame
     data_clean = data[cols_to_keep].copy()
     
     # Rempli les valeurs manquantes restantes par forward fill puis backward fill
-    data_clean = data_clean.fillna(method='ffill').fillna(method='bfill')
+    data_clean = data_clean..ffill().bfill()
     
     return data_clean
 

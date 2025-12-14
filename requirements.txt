@@ -17,4 +17,4 @@ pymoo
 streamlit
 plotly
 
-sckit-learn
+scikit-learn
