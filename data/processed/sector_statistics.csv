@@ -1,0 +1,12 @@
+Secteur,Rendement Annuel (%)_mean,Rendement Annuel (%)_std,Rendement Annuel (%)_min,Rendement Annuel (%)_max,Volatilité (%)_mean,Volatilité (%)_std,Sharpe Ratio_mean,Sharpe Ratio_std,Nombre_Actifs
+Communication Services,7.244,10.894,-6.923,20.324,32.027,7.774,0.141,0.331,11
+Consumer Discretionary,10.906,11.591,-13.733,51.109,40.896,13.184,0.244,0.245,25
+Consumer Staples,6.372,8.296,-18.373,23.765,25.1,5.262,0.205,0.299,20
+Energy,11.311,7.841,1.229,29.943,46.039,9.977,0.216,0.177,14
+Financials,9.302,5.923,-0.735,20.168,36.744,5.1,0.212,0.178,24
+Health Care,7.386,10.256,-6.775,35.353,28.665,4.642,0.181,0.335,20
+Industrials,9.025,8.775,-12.117,25.841,32.032,6.857,0.238,0.247,25
+Information Technology,20.386,13.976,-19.027,60.155,42.944,9.459,0.437,0.312,29
+Materials,11.372,7.517,-0.113,25.492,36.103,8.74,0.256,0.188,12
+Real Estate,5.216,6.573,-4.506,11.899,33.236,6.94,0.091,0.21,8
+Utilities,4.816,3.969,-3.962,9.127,26.696,2.063,0.107,0.148,8

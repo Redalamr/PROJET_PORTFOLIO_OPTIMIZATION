@@ -15,7 +15,7 @@ import sys
 
 # === Chemins de base ===
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))     # Dossier du script
-json_path = os.path.join(SCRIPT_DIR, r"C:\Users\redlam\Downloads\PROJET_PORTFOLIO_OPTIMIZATION\data\tick.json")           # Fichier des tickers
+json_path = os.path.join(SCRIPT_DIR, "data", "tick.json")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "data")               # Dossier de sortie
 
 # === Paramètres généraux ===

@@ -8,17 +8,18 @@ import numpy as np
 import json
 import os
 from typing import Dict, Tuple, List
-
-def load_tickers_by_sector(json_path: str = "data/tick.json") -> Dict[str, List[str]]:
+from pathlib import Path
+def load_tickers_by_sector(json_path: str = None) -> Dict[str, List[str]]:
     """
     Charge la liste des tickers organisés par secteur.
-    
-    Args:
-        json_path: Chemin vers le fichier JSON des tickers
-        
-    Returns:
-        Dictionnaire {secteur: [liste de tickers]}
     """
+    # Si aucun chemin n'est fourni, on le construit dynamiquement
+    if json_path is None:
+        # On récupère le dossier où se trouve CE fichier (src/)
+        current_file_dir = Path(__file__).parent
+        # On remonte d'un niveau (racine) et on descend dans data/
+        json_path = current_file_dir.parent / "data" / "tick.json"
+    
     with open(json_path, 'r') as f:
         sectors = json.load(f)
     return sectors
@@ -90,7 +91,8 @@ def clean_data(data: pd.DataFrame, max_missing_pct: float = 0.1) -> pd.DataFrame
 
 def prepare_data(start_date: str = "2020-01-01", 
                  end_date: str = "2024-12-31",
-                 data_dir: str = "data/raw") -> Tuple[pd.DataFrame, pd.DataFrame, np.ndarray, np.ndarray, Dict[str, str]]:
+                 data_dir: str = "data/raw",
+                 tick_json_path: str | None = None) -> Tuple[pd.DataFrame, pd.DataFrame, np.ndarray, np.ndarray, Dict[str, str]]:
     """
     Pipeline complet de préparation des données.
     
@@ -98,6 +100,8 @@ def prepare_data(start_date: str = "2020-01-01",
         start_date: Date de début
         end_date: Date de fin
         data_dir: Dossier des données brutes
+        tick_json_path: Chemin optionnel vers le fichier `data/tick.json` (permet d'être explicite
+                        lorsque le notebook est exécuté depuis un dossier différent)
         
     Returns:
         prices: Prix nettoyés
@@ -123,7 +127,8 @@ def prepare_data(start_date: str = "2020-01-01",
     Sigma = returns.cov().values * 252
     
     # Crée le mapping ticker -> secteur
-    sectors = load_tickers_by_sector()
+    # On permet de passer explicitement le chemin vers `tick.json` (utile dans les notebooks)
+    sectors = load_tickers_by_sector(tick_json_path)
     ticker_sectors = {}
     for sector, tickers in sectors.items():
         for ticker in tickers:
