@@ -102,3 +102,20 @@ def compare_fronts(fronts_list: list, names_list: list) -> pd.DataFrame:
         })
         
     return pd.DataFrame(results)
+
+def calculate_all_metrics(front: np.ndarray) -> dict:
+    if len(front) == 0:
+        return {
+            "hypervolume": 0.0,
+            "spacing": 0.0,
+            "spread": 0.0
+        }
+
+    ranges = np.max(front, axis=0) - np.min(front, axis=0)
+    hv_proxy = np.prod(ranges)
+
+    return {
+        "hypervolume": hv_proxy,
+        "spacing": spacing_metric(front),
+        "spread": spread_metric(front)
+    }
