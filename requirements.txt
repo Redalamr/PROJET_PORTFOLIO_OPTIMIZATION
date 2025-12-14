@@ -1,0 +1,18 @@
+# Données et Manipulation
+numpy
+pandas
+yfinance
+tqdm
+matplotlib
+seaborn
+
+# Optimisation Mathématique (Niveau 1)
+scipy
+cvxpy
+
+# Algorithmes Génétiques (Niveau 2 - NSGA-II)
+pymoo
+
+# Application Web (Niveau 3)
+streamlit
+plotly
