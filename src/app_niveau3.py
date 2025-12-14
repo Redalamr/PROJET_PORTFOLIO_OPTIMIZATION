@@ -1,6 +1,10 @@
 """
 Application Streamlit - Niveau 3 : Robustesse et Analyse des Limites
-VERSION STRICTE CONFORME AU PDF (Sans Black-Litterman ni VaR)
+VERSION STRICTE CONFORME AU PDF :
+- Niveau 1 : Comparaison Méthodes
+- Niveau 2 : Optimisation Tri-Critère (Rendement/Risque/Coûts) + Sélection Interactive
+- Niveau 3 : Robustesse (Bootstrap)
+- Analyse des Limites
 """
 
 import streamlit as st
@@ -8,7 +12,6 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
-from plotly.subplots import make_subplots
 import sys
 from pathlib import Path
 
@@ -16,36 +19,25 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from data_loader import prepare_data
-from pareto_metrics import (
-    compare_fronts
-)
-from robustness import (
-    bootstrap_resampling, optimize_with_bootstrap
-)
+from pareto_metrics import compare_fronts
+from robustness import bootstrap_resampling, optimize_with_bootstrap
 from limits_analysis import (
-    test_normality, plot_qq_plots, test_stationarity,
-    plot_rolling_statistics, correlation_stability,
-    plot_correlation_stability, estimation_error_analysis, 
+    test_normality, plot_rolling_statistics, estimation_error_analysis, 
     concentration_analysis
 )
-from optimizers.classic import (
-    generate_efficient_frontier_scalarization,
-    find_tangency_portfolio
+from optimizers.classic import generate_efficient_frontier_scalarization, find_tangency_portfolio
+from optimizers.genetic import (
+    optimize_nsga2_biobjective, 
+    optimize_nsga2,  # Optimiseur Tri-objectif
+    extract_pareto_front, 
+    select_portfolio_from_front
 )
-from optimizers.genetic import optimize_nsga2_biobjective, extract_pareto_front
-
-# Configuration de la page (si lancé seul)
-# st.set_page_config(page_title="Niveau 3 - Robustesse", page_icon="🔬", layout="wide")
 
 def page_niveau3():
-    """
-    Page dédiée au Niveau 3 : Robustesse et Analyse des Limites
-    Conforme aux exigences strictes du PDF.
-    """
-    st.title("🔬 Niveau 3 : Robustesse et Analyse des Limites")
+    st.title("🚀 Application de Gestion de Portefeuille (Niveaux 1, 2 & 3)")
     st.markdown("---")
     
-    # Chargement des données
+    # === CHARGEMENT DES DONNÉES ===
     @st.cache_data
     def load_data():
         prices, returns, mu, Sigma, ticker_sectors = prepare_data(
@@ -61,167 +53,231 @@ def page_niveau3():
     
     st.sidebar.success(f"✅ {len(tickers)} actifs chargés")
     
-    # Sélection de l'analyse (OPTIONS RÉDUITES AU STRICT NÉCESSAIRE)
-    analysis_type = st.sidebar.selectbox(
-        "Type d'analyse",
+    # === MENU DE SÉLECTION ===
+    analysis_type = st.sidebar.radio(
+        "Choisir l'étape du projet :",
         [
-            "📊 Comparaison des Méthodes (Markowitz vs NSGA-II)",
-            "🔄 Robustesse par Rééchantillonnage (Bootstrap)",
-            "🔍 Analyse des Limites du Modèle"
+            "1️⃣ Niveau 1 : Comparaison (Markowitz vs NSGA-II)",
+            "2️⃣ Niveau 2 : Contraintes & Coûts (Tri-Critère)",
+            "3️⃣ Niveau 3 : Robustesse (Bootstrap)",
+            "🔍 Analyse des Limites"
         ]
     )
     
-    # === 1. COMPARAISON QUANTITATIVE ===
-    if "Comparaison" in analysis_type:
-        st.header("📊 Comparaison : Scalarisation vs NSGA-II")
-        st.info("Comparaison du modèle classique (convexe) et de l'approche heuristique (NSGA-II) utilisée pour la cardinalité.")
+    # =================================================================================
+    # NIVEAU 1 : COMPARAISON MARKOWITZ VS NSGA-II
+    # =================================================================================
+    if "Niveau 1" in analysis_type:
+        st.header("📊 Niveau 1 : Frontière Efficace Classique")
+        st.info("Comparaison du modèle mathématique exact (Scalarisation) et de l'heuristique (NSGA-II Bi-objectif).")
         
         col1, col2 = st.columns(2)
         with col1:
-            n_points = st.slider("Nombre de points (Frontière)", 20, 100, 50)
+            n_points = st.slider("Nombre de points (Scalarisation)", 20, 100, 50)
         with col2:
             n_gen = st.slider("Générations NSGA-II", 50, 200, 100)
         
         if st.button("🚀 Lancer la Comparaison"):
-            with st.spinner("Calcul des frontières..."):
-                # Méthode 1 : Scalarisation (Benchmark)
+            with st.spinner("Calcul en cours..."):
+                # 1. Scalarisation (Benchmark)
                 portfolios_scal, rets_scal, risks_scal = generate_efficient_frontier_scalarization(
                     mu, Sigma, n_points=n_points
                 )
                 F_scal = np.column_stack([-rets_scal, risks_scal])
                 
-                # Méthode 2 : NSGA-II
-                res_nsga = optimize_nsga2_biobjective(mu, Sigma, K=None, 
-                                                      pop_size=100, n_gen=n_gen)
+                # 2. NSGA-II (Bi-objectif)
+                res_nsga = optimize_nsga2_biobjective(mu, Sigma, K=None, pop_size=100, n_gen=n_gen)
                 X_nsga, F_nsga = extract_pareto_front(res_nsga)
                 
-                st.success("✅ Optimisation terminée")
-                
-                # Visualisation comparative
+                # Visualisation
                 fig = go.Figure()
-                
-                # Trace Markowitz
                 fig.add_trace(go.Scatter(
-                    x=np.sqrt(risks_scal) * 100,
-                    y=rets_scal * 100,
-                    mode='lines+markers',
-                    name='Markowitz (Benchmark)',
+                    x=np.sqrt(risks_scal) * 100, y=rets_scal * 100,
+                    mode='lines+markers', name='Markowitz (Exact)',
                     marker=dict(size=6, color='blue')
                 ))
-                
-                # Trace NSGA-II
-                rets_nsga = -F_nsga[:, 0]
-                risks_nsga = F_nsga[:, 1]
-                
                 fig.add_trace(go.Scatter(
-                    x=np.sqrt(risks_nsga) * 100,
-                    y=rets_nsga * 100,
-                    mode='markers',
-                    name='NSGA-II (Approximation)',
+                    x=np.sqrt(F_nsga[:, 1]) * 100, y=-F_nsga[:, 0] * 100,
+                    mode='markers', name='NSGA-II (Approx)',
                     marker=dict(size=6, color='red', symbol='x')
                 ))
-                
-                fig.update_layout(
-                    title="Superposition des Frontières Efficaces",
-                    xaxis_title="Volatilité (%)",
-                    yaxis_title="Rendement Espéré (%)",
-                    height=600
-                )
+                fig.update_layout(title="Comparaison des Frontières", xaxis_title="Volatilité (%)", yaxis_title="Rendement (%)")
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Métriques simples
-                metrics_df = compare_fronts([F_scal, F_nsga], ['Markowitz', 'NSGA-II'])
-                st.subheader("Indicateurs de Convergence")
-                st.dataframe(metrics_df[['name', 'hypervolume', 'spacing', 'spread']])
+                # Métriques
+                st.subheader("Indicateurs de Performance")
+                metrics = compare_fronts([F_scal, F_nsga], ['Markowitz', 'NSGA-II'])
+                st.dataframe(metrics[['name', 'hypervolume', 'spread']])
 
-    # === 2. BOOTSTRAP (ROBUSTESSE DEMANDÉE) ===
-    elif "Bootstrap" in analysis_type:
-        st.header("🔄 Robustesse par Rééchantillonnage")
-        
+    # =================================================================================
+    # NIVEAU 2 : TRI-OBJECTIF & SÉLECTION (AJOUT MAJEUR)
+    # =================================================================================
+    elif "Niveau 2" in analysis_type:
+        st.header("⚖️ Niveau 2 : Optimisation Tri-Critère avec Coûts")
         st.markdown("""
-        **Objectif PDF :** "Une procédure de rééchantillonnage permet d'évaluer la stabilité des portefeuilles."
-        Nous utilisons le **Bootstrap** pour générer des scénarios de marché alternatifs et observer la dispersion des poids optimaux.
+        **Objectifs :** Maximiser le rendement, Minimiser le risque, Minimiser les coûts de transaction.
+        **Contraintes :** Cardinalité (nombre d'actifs) et budget.
         """)
         
-        n_bootstrap = st.slider("Nombre d'échantillons bootstrap", 20, 100, 50)
-        
-        if st.button("🔄 Lancer le Test de Stabilité"):
-            with st.spinner(f"Génération de {n_bootstrap} scénarios..."):
-                # 1. Génération des échantillons
-                bootstrap_samples = bootstrap_resampling(returns, n_samples=n_bootstrap)
+        # Paramètres utilisateur
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            K_target = st.number_input("Cardinalité Cible (K)", min_value=2, max_value=len(tickers), value=10)
+        with col2:
+            c_prop = st.number_input("Coût Transaction (%)", value=0.5, step=0.1) / 100.0
+        with col3:
+            n_gen_tri = st.number_input("Générations", value=100, min_value=50)
+
+        # Bouton de lancement
+        if st.button("⚡ Calculer le Front de Pareto 3D"):
+            with st.spinner("Optimisation NSGA-II Tri-Objectif en cours..."):
+                # Simulation d'un portefeuille courant (ex: équipondéré) pour calculer les coûts de réallocation
+                w_current = np.ones(len(tickers)) / len(tickers)
                 
-                # 2. Optimisation sur chaque échantillon (Portefeuille Tangent)
-                w_mean, w_std = optimize_with_bootstrap(
-                    mu, Sigma, bootstrap_samples,
-                    optimizer_func=find_tangency_portfolio,
-                    rf=0.02
+                res_tri = optimize_nsga2(
+                    mu, Sigma, w_current=w_current, 
+                    K=K_target, c_prop=c_prop, 
+                    pop_size=100, n_gen=n_gen_tri
                 )
                 
-                st.success("✅ Analyse terminée")
+                # Sauvegarde en session pour interactivité sans tout recalculer
+                X_tri, F_tri = extract_pareto_front(res_tri)
+                st.session_state['X_tri'] = X_tri
+                st.session_state['F_tri'] = F_tri
+                st.success(f"✅ Optimisation terminée : {len(F_tri)} solutions trouvées.")
+
+        # Si résultats disponibles, on affiche l'interface de sélection
+        if 'F_tri' in st.session_state:
+            F = st.session_state['F_tri']
+            X = st.session_state['X_tri']
+            
+            # 1. Graphique 3D
+            st.subheader("1. Visualisation du Front de Pareto 3D")
+            
+            # Données pour le plot : Rendement (positif), Risque, Coûts
+            returns_pct = -F[:, 0] * 100
+            risks_pct = np.sqrt(F[:, 1]) * 100
+            costs_pct = F[:, 2] * 100
+            
+            fig_3d = px.scatter_3d(
+                x=risks_pct, y=returns_pct, z=costs_pct,
+                color=costs_pct,
+                labels={'x': 'Risque (%)', 'y': 'Rendement (%)', 'z': 'Coûts (%)'},
+                title="Frontière Tri-Critère"
+            )
+            st.plotly_chart(fig_3d, use_container_width=True)
+            
+            # 2. Outil de Sélection Interactive (Livrable PDF)
+            st.subheader("2. Sélection du Portefeuille Optimal")
+            st.markdown("Choisissez un **rendement minimal ($r_{min}$)**. L'outil sélectionnera le meilleur compromis Risque/Coûts.")
+            
+            min_r_slider = st.slider(
+                "Rendement Minimal Souhaité (%)", 
+                min_value=float(returns_pct.min()), 
+                max_value=float(returns_pct.max()), 
+                value=float(returns_pct.mean())
+            )
+            
+            try:
+                # Sélection du meilleur compromis respectant la contrainte
+                # Note : On passe le rendement brut (non %) à la fonction
+                idx, w_opt = select_portfolio_from_front(
+                    X, F, min_return=(min_r_slider / 100.0)
+                )
                 
-                # Visualisation de l'instabilité
-                st.subheader("Stabilité des Allocations (Top 10 Actifs)")
+                # Affichage des métriques du portefeuille choisi
+                st.write("### 🏆 Portefeuille Sélectionné")
+                col_m1, col_m2, col_m3 = st.columns(3)
+                col_m1.metric("Rendement Espéré", f"{returns_pct[idx]:.2f} %")
+                col_m2.metric("Risque (Volatilité)", f"{risks_pct[idx]:.2f} %")
+                col_m3.metric("Coûts Transaction", f"{costs_pct[idx]:.2f} %")
                 
-                # On trie par poids moyen
-                top_indices = np.argsort(w_mean)[-10:][::-1]
+                # 3. Analyse Sectorielle (Demande PDF : "Ventilation par types d'industrie")
+                st.subheader("3. Structure Macro-économique (Secteurs)")
                 
+                conc_analysis = concentration_analysis(w_opt, tickers, ticker_sectors)
+                sector_weights = conc_analysis['sector_weights']
+                
+                # Camembert des secteurs
+                df_sectors = pd.DataFrame(list(sector_weights.items()), columns=['Secteur', 'Poids'])
+                df_sectors = df_sectors[df_sectors['Poids'] > 0.01] # Filtrer les tout petits
+                
+                fig_pie = px.pie(
+                    df_sectors, values='Poids', names='Secteur',
+                    title="Allocation Sectorielle du Portefeuille",
+                    hole=0.4
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+                
+                # Top Actifs
+                st.subheader("🔍 Top 10 Actifs")
+                df_assets = pd.DataFrame({'Ticker': tickers, 'Poids': w_opt * 100})
+                df_assets = df_assets.sort_values(by='Poids', ascending=False).head(10)
+                st.bar_chart(df_assets.set_index('Ticker'))
+                
+            except ValueError as e:
+                st.error(f"Aucun portefeuille ne respecte ce critère : {e}")
+
+    # =================================================================================
+    # NIVEAU 3 : ROBUSTESSE (BOOTSTRAP)
+    # =================================================================================
+    elif "Niveau 3" in analysis_type:
+        st.header("🔄 Niveau 3 : Robustesse par Rééchantillonnage")
+        st.markdown("**Objectif :** Évaluer la stabilité des poids optimaux face à l'incertitude des données.")
+        
+        n_bootstrap = st.slider("Nombre d'échantillons bootstrap", 20, 100, 30)
+        
+        if st.button("🔄 Lancer le Test de Stabilité"):
+            with st.spinner("Simulation Bootstrap en cours..."):
+                bootstrap_samples = bootstrap_resampling(returns, n_samples=n_bootstrap)
+                w_mean, w_std = optimize_with_bootstrap(
+                    mu, Sigma, bootstrap_samples,
+                    optimizer_func=find_tangency_portfolio, rf=0.02
+                )
+                
+                # Visualisation Top 15 Stabilité
+                top_indices = np.argsort(w_mean)[-15:][::-1]
                 fig = go.Figure()
                 
                 for idx in top_indices:
                     ticker = tickers[idx]
-                    weight = w_mean[idx] * 100
-                    error = 1.96 * w_std[idx] * 100  # Intervalle de confiance 95%
-                    
                     fig.add_trace(go.Bar(
-                        x=[ticker], y=[weight],
+                        x=[ticker], y=[w_mean[idx]*100],
                         name=ticker,
-                        error_y=dict(type='data', array=[error], visible=True),
+                        error_y=dict(type='data', array=[1.96*w_std[idx]*100], visible=True),
                         marker_color='steelblue'
                     ))
                 
-                fig.update_layout(
-                    title="Poids Moyens et Incertitude (IC 95%)",
-                    yaxis_title="Poids (%)",
-                    showlegend=False
-                )
+                fig.update_layout(title="Poids Moyens et Incertitude (IC 95%)", yaxis_title="Poids (%)")
                 st.plotly_chart(fig, use_container_width=True)
-                
-                st.info("""
-                **Interprétation :** Les barres d'erreur indiquent la sensibilité de l'allocation aux données. 
-                Une grande barre signifie que l'actif est sélectionné "par chance" dans certains scénarios, mais pas structurellement.
-                """)
 
-    # === 3. ANALYSE DES LIMITES (DEMANDÉE DANS LE RAPPORT) ===
+    # =================================================================================
+    # ANALYSE DES LIMITES
+    # =================================================================================
     elif "Limites" in analysis_type:
         st.header("🔍 Analyse des Limites du Modèle")
-        st.markdown("Analyse statistique justifiant les limites discutées dans le rapport.")
         
         tabs = st.tabs(["📉 Non-Normalité", "📊 Stationnarité", "❌ Erreurs d'Estimation"])
         
         with tabs[0]:
             st.subheader("Test de Normalité (Jarque-Bera)")
-            if st.button("Lancer le test de normalité"):
+            if st.button("Lancer Test Normalité"):
                 res = test_normality(returns)
-                n_reject = res['JB_reject'].sum()
-                st.warning(f"⚠️ {n_reject} actifs sur {len(tickers)} rejettent l'hypothèse de normalité.")
-                st.markdown("Cela confirme que la variance (Markowitz) sous-estime les risques extrêmes.")
-                st.dataframe(res.head(10))
+                st.write(f"⚠️ {res['JB_reject'].sum()} actifs rejettent l'hypothèse de normalité.")
+                st.dataframe(res.head())
 
         with tabs[1]:
-            st.subheader("Test de Stationnarité")
-            if st.button("Vérifier la stationnarité"):
-                st.markdown("Graphique des statistiques glissantes sur un actif représentatif :")
-                fig = plot_rolling_statistics(returns, tickers[0], window=252)
-                st.pyplot(fig)
-                st.markdown("La moyenne et la variance changent dans le temps, violant les hypothèses du modèle.")
+            st.subheader("Stationnarité (Moyenne/Variance glissante)")
+            asset = st.selectbox("Choisir un actif", tickers)
+            st.pyplot(plot_rolling_statistics(returns, asset))
 
         with tabs[2]:
-            st.subheader("Sensibilité aux Erreurs")
-            if st.button("Simuler les erreurs d'estimation"):
-                errors = estimation_error_analysis(returns, n_iterations=30)
-                st.metric("Erreur Moyenne sur les Rendements", f"{errors['mu_error_mean']:.4f}")
-                st.metric("Erreur Moyenne sur la Covariance", f"{errors['sigma_error_mean']:.4f}")
-                st.info("Ces erreurs expliquent l'instabilité observée dans le Bootstrap.")
+            st.subheader("Sensibilité aux Erreurs d'Estimation")
+            if st.button("Simuler Erreurs"):
+                errors = estimation_error_analysis(returns)
+                st.metric("Erreur Moyenne Covariance", f"{errors['sigma_error_mean']:.4f}")
+                st.info("Montre l'écart entre paramètres estimés sur échantillon vs réalité.")
 
 if __name__ == "__main__":
+    st.set_page_config(page_title="Projet Portfolio - Niveau 3", layout="wide")
     page_niveau3()
