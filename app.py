@@ -27,7 +27,16 @@ from optimizers.genetic import (
     optimize_nsga2, optimize_nsga2_biobjective,
     extract_pareto_front, select_portfolio_from_front
 )
-
+# === NOUVEAUX IMPORTS NIVEAU 3 ===
+from pareto_metrics import calculate_all_metrics, compare_fronts
+from robustness import (
+    black_litterman, bootstrap_resampling, sensitivity_analysis,
+    calculate_var_cvar, create_view_matrix
+)
+from limits_analysis import (
+    test_normality, test_stationarity, correlation_stability,
+    concentration_analysis
+)
 # Configuration de la page
 st.set_page_config(
     page_title="Optimisation de Portefeuille",
@@ -69,10 +78,14 @@ st.sidebar.success(f"✅ {len(tickers)} actifs chargés")
 # Sélection du niveau
 niveau = st.sidebar.radio(
     "Niveau d'optimisation",
-    ["Niveau 1: Markowitz Classique", "Niveau 2: Avec Contraintes", "Comparaison"],
+    [
+        "Niveau 1: Markowitz Classique",
+        "Niveau 2: Avec Contraintes",
+        "Niveau 3: Robustesse et Limites",  # ⭐ NOUVEAU
+        "Comparaison"
+    ],
     index=0
 )
-
 # Paramètres communs
 st.sidebar.subheader("Paramètres Financiers")
 rf = st.sidebar.slider("Taux sans risque (%)", 0.0, 10.0, 2.0, 0.5) / 100
@@ -400,7 +413,173 @@ elif "Niveau 2" in niveau:
                 
             except ValueError as e:
                 st.error(f"Aucun portefeuille ne satisfait les critères: {e}")
+                # === NIVEAU 3: ROBUSTESSE ET LIMITES ===
 
+    elif "Niveau 3" in niveau:
+        st.header("🔬 Niveau 3 : Robustesse et Analyse des Limites")
+    
+    analysis_type = st.sidebar.selectbox(
+        "Type d'analyse",
+        [
+            "📊 Comparaison Quantitative",
+            "🔍 Tests de Normalité",
+            "🛡️ Black-Litterman",
+            "🔄 Bootstrap",
+            "📈 Sensibilité",
+            "📉 VaR et CVaR"
+        ]
+    )
+    
+    # === COMPARAISON QUANTITATIVE ===
+    if "Comparaison Quantitative" in analysis_type:
+        st.subheader("📊 Indicateurs de Qualité du Front de Pareto")
+        
+        if st.button("🚀 Comparer les Méthodes"):
+            with st.spinner("Optimisation..."):
+                # Scalarisation
+                _, rets_scal, risks_scal = generate_efficient_frontier_scalarization(
+                    mu, Sigma, n_points=50
+                )
+                F_scal = np.column_stack([-rets_scal, risks_scal])
+                
+                # NSGA-II
+                res_nsga = optimize_nsga2_biobjective(mu, Sigma, K=None, 
+                                                      pop_size=100, n_gen=100)
+                _, F_nsga = extract_pareto_front(res_nsga)
+                
+                # Comparaison
+                metrics_df = compare_fronts([F_scal, F_nsga], 
+                                           ['Scalarisation', 'NSGA-II'])
+                
+                st.dataframe(metrics_df, use_container_width=True)
+                
+                st.success(f"""
+                **Meilleur Hypervolume** : {metrics_df.loc[metrics_df['hypervolume'].idxmax(), 'name']}
+                **Meilleur Spacing** : {metrics_df.loc[metrics_df['spacing'].idxmin(), 'name']}
+                """)
+    
+    # === TESTS DE NORMALITÉ ===
+    elif "Tests de Normalité" in analysis_type:
+        st.subheader("🔍 Test de Normalité des Rendements")
+        
+        if st.button("🧪 Tester"):
+            norm_results = test_normality(returns)
+            n_reject = norm_results['JB_reject'].sum()
+            
+            st.metric("Actifs Non-Normaux", 
+                     f"{n_reject}/{len(returns.columns)} ({n_reject/len(returns.columns)*100:.1f}%)")
+            
+            st.dataframe(norm_results, use_container_width=True)
+            
+            if n_reject > len(returns.columns) * 0.5:
+                st.warning("⚠️ Plus de 50% des actifs rejettent la normalité !")
+    
+    # === BLACK-LITTERMAN ===
+    elif "Black-Litterman" in analysis_type:
+        st.subheader("🛡️ Optimisation Robuste : Black-Litterman")
+        
+        st.info("Définissez une vue subjective sur un actif")
+        
+        selected_ticker = st.selectbox("Actif", tickers)
+        expected_return = st.slider("Rendement attendu (%)", 0.0, 30.0, 10.0) / 100
+        
+        if st.button("🚀 Optimiser avec BL"):
+            asset_idx = tickers.index(selected_ticker)
+            P = create_view_matrix(len(tickers), 'absolute', [asset_idx])[0]
+            Q = np.array([expected_return])
+            
+            mu_bl, Sigma_bl = black_litterman(Sigma, P=P, Q=Q)
+            
+            w_classic = find_tangency_portfolio(mu, Sigma, rf=0.02)
+            w_bl = find_tangency_portfolio(mu_bl, Sigma_bl, rf=0.02)
+            
+            col1, col2 = st.columns(2)
+            col1.metric("Rendement Classique", f"{(w_classic@mu)*100:.2f}%")
+            col2.metric("Rendement BL", f"{(w_bl@mu_bl)*100:.2f}%")
+            
+            st.success("✅ Black-Litterman intègre votre vue tout en restant prudent!")
+    
+    # === BOOTSTRAP ===
+    elif "Bootstrap" in analysis_type:
+        st.subheader("🔄 Rééchantillonnage Bootstrap")
+        
+        n_bootstrap = st.slider("Nombre d'échantillons", 10, 100, 50)
+        
+        if st.button("🔄 Lancer"):
+            with st.spinner(f"Génération de {n_bootstrap} échantillons..."):
+                bootstrap_samples = bootstrap_resampling(returns, n_samples=n_bootstrap)
+                
+                from optimizers.classic import find_tangency_portfolio
+                w_mean, w_std = optimize_with_bootstrap(
+                    mu, Sigma, bootstrap_samples,
+                    optimizer_func=find_tangency_portfolio, rf=0.02
+                )
+                
+                st.success("✅ Bootstrap terminé!")
+                
+                top_10 = np.argsort(w_mean)[-10:]
+                bootstrap_df = pd.DataFrame({
+                    'Ticker': [tickers[i] for i in top_10],
+                    'Poids (%)': [w_mean[i]*100 for i in top_10],
+                    'Incertitude (%)': [1.96*w_std[i]*100 for i in top_10]
+                })
+                
+                st.dataframe(bootstrap_df, use_container_width=True)
+    
+    # === SENSIBILITÉ ===
+    elif "Sensibilité" in analysis_type:
+        st.subheader("📈 Analyse de Sensibilité")
+        
+        param = st.selectbox("Paramètre à perturber", ['mu', 'Sigma'])
+        
+        if st.button("🔍 Analyser"):
+            from optimizers.classic import find_tangency_portfolio
+            
+            sens_results = sensitivity_analysis(
+                mu, Sigma, find_tangency_portfolio,
+                param_name=param,
+                perturbation_range=np.linspace(-0.1, 0.1, 11),
+                rf=0.02
+            )
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=[p*100 for p in sens_results['perturbations']],
+                y=sens_results['weight_changes'],
+                mode='lines+markers'
+            ))
+            fig.update_layout(
+                title=f"Sensibilité des Poids à {param}",
+                xaxis_title=f"Perturbation de {param} (%)",
+                yaxis_title="Changement Total des Poids"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            max_change = max(sens_results['weight_changes'])
+            if max_change > 0.5:
+                st.warning(f"⚠️ Haute sensibilité : {max_change:.2f}")
+    
+    # === VAR / CVAR ===
+    else:  # VaR et CVaR
+        st.subheader("📉 Value-at-Risk et CVaR")
+        
+        confidence = st.slider("Niveau de confiance (%)", 90, 99, 95) / 100
+        
+        if st.button("📊 Calculer"):
+            w_tangent = find_tangency_portfolio(mu, Sigma, rf=0.02)
+            var, cvar = calculate_var_cvar(returns, w_tangent, confidence)
+            
+            col1, col2 = st.columns(2)
+            col1.metric(f"VaR ({confidence*100:.0f}%)", f"{var:.2f}%")
+            col2.metric(f"CVaR ({confidence*100:.0f}%)", f"{cvar:.2f}%")
+            
+            portfolio_returns = (returns * w_tangent).sum(axis=1) * 100
+            
+            fig = go.Figure()
+            fig.add_trace(go.Histogram(x=portfolio_returns, nbinsx=50))
+            fig.add_vline(x=-var, line_color='red', line_dash='dash')
+            fig.update_layout(title="Distribution des Rendements")
+            st.plotly_chart(fig, use_container_width=True)
 # === COMPARAISON ===
 else:
     st.header("Comparaison des Méthodes")
