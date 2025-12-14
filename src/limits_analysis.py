@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 import matplotlib.pyplot as plt
+from typing import List, Dict
 
 def test_normality(returns: pd.DataFrame) -> pd.DataFrame:
     """
@@ -118,7 +119,7 @@ def estimation_error_analysis(returns: pd.DataFrame, n_iterations: int = 50, tra
         'sigma_errors': sigma_errors
     }
 
-def concentration_analysis(weights: np.ndarray, tickers: List[str], ticker_sectors: dict) -> dict:
+def concentration_analysis(weights: np.ndarray, tickers: List[str], ticker_sectors: Dict[str, str]) -> dict:
     """
     Analyse la concentration sectorielle.
     Répond à la demande du PDF : "ventilation par types d'industrie".
